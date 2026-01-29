@@ -49,16 +49,44 @@ This project predicts whether a customer is likely to churn so businesses can ta
 - Provides real-time churn prediction via REST API
 
 ---
+## 🏗 System Architecture
+
+The churn prediction system follows a modular and production-ready architecture:
+
+1. **Client Layer**
+   - Users interact via Swagger UI or REST API requests
+
+2. **API Layer (FastAPI)**
+   - Handles incoming requests
+   - Validates input using Pydantic schemas
+   - Exposes prediction endpoints
+
+3. **Data Processing Layer**
+   - Converts input JSON into Pandas DataFrame
+   - Applies one-hot encoding
+   - Aligns features with trained model schema
+
+4. **Machine Learning Layer**
+   - Pre-trained Logistic Regression model
+   - Predicts churn and churn probability
+
+5. **Deployment Layer**
+   - Docker container ensures consistent runtime
+   - Application can be deployed on any cloud or server
+
+This architecture ensures scalability, reliability, and easy deployment.
 
 ## 🐳 Docker Usage
 
 ### Build Docker Image
 ```bash
-### docker build -t churn-api .
+# docker build -t churn-api .
 
 
 ### Run Docker Container
 docker run -p 8000:8000 churn-api
+
+
 
 ### Access API
 
