@@ -1,10 +1,13 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File
+from io import StringIO
 from pydantic import BaseModel
 import joblib
 import pandas as pd
 
+# ------------------ APP INIT ------------------
 app = FastAPI(title="Customer Churn Prediction API")
 
+# ------------------ INPUT SCHEMA ------------------
 class CustomerInput(BaseModel):
     gender: str
     SeniorCitizen: int
@@ -51,19 +54,19 @@ class CustomerInput(BaseModel):
             }
         }
 
-
-# Load model and feature list
+# ------------------ LOAD MODEL ------------------
 model = joblib.load("churn_model.pkl")
 model_features = joblib.load("model_features.pkl")
 
+# ------------------ HEALTH CHECK ------------------
 @app.get("/")
 def home():
     return {"message": "Churn Prediction API is running"}
 
+# ------------------ SINGLE CUSTOMER PREDICTION ------------------
 @app.post("/predict")
 def predict_churn(customer: CustomerInput):
     df = pd.DataFrame([customer.dict()])
-
     df = pd.get_dummies(df)
 
     for col in model_features:
@@ -80,22 +83,46 @@ def predict_churn(customer: CustomerInput):
         "churn_probability": round(probability, 2)
     }
 
-    # Convert input to DataFrame
-    df = pd.DataFrame([customer])
+# ------------------ CSV BATCH PREDICTION ------------------
+@app.post("/predict-csv")
+def predict_churn_csv(file: UploadFile = File(...)):
+    contents = file.file.read().decode("utf-8")
+    df = pd.read_csv(StringIO(contents))
 
-    # One-hot encode input
-    df = pd.get_dummies(df)
+    customer_ids = df.get("customerID", None)
 
-    # Add missing columns
+    df = df.drop(columns=["customerID", "Churn"], errors="ignore")
+
+    df_encoded = pd.get_dummies(df)
+
     for col in model_features:
-        if col not in df.columns:
-            df[col] = 0
+        if col not in df_encoded.columns:
+            df_encoded[col] = 0
 
-    # Ensure correct column order
-    df = df[model_features]
+    df_encoded = df_encoded[model_features]
 
-    prediction = model.predict(df)[0]
+    predictions = model.predict(df_encoded)
+    probabilities = model.predict_proba(df_encoded)[:, 1]
+
+    # 🔢 KPI METRICS
+    total_records = len(predictions)
+    churned_customers = int((predictions == 1).sum())
+    not_churned_customers = total_records - churned_customers
+    churn_percentage = round((churned_customers / total_records) * 100, 2)
+
+    results = []
+    for i in range(total_records):
+        results.append({
+            "customerID": customer_ids.iloc[i] if customer_ids is not None else i,
+            "churn_prediction": "Yes" if predictions[i] == 1 else "No",
+            "churn_probability": round(float(probabilities[i]), 2)
+        })
 
     return {
-        "churn_prediction": "Yes" if prediction == 1 else "No"
+        "total_records": total_records,
+        "churned_customers": churned_customers,
+        "not_churned_customers": not_churned_customers,
+        "churn_percentage": churn_percentage,
+        "predictions": results[:10]
     }
+
